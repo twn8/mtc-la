@@ -450,15 +450,55 @@ export default function Home() {
       var tbody = document.getElementById('bodyRiwayatPM');
       if (!tbody) return;
       tbody.innerHTML = '';
-      if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Data tidak ditemukan.</td></tr>'; return; }
+      if (!data || data.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Data tidak ditemukan.</td></tr>'; 
+        return; 
+      }
 
-      data.forEach(function(r) {
-        var tr = document.createElement('tr');
-        tr.innerHTML = '<td style="text-align:center;" class="no-print"><button class="btn-edit" onclick="openModalEditPM(' + r.rowIndex + ')">✏️ Edit</button></td>' +
-                       '<td>' + r.hari + '</td><td>' + r.tanggal + '</td><td>' + r.line + '</td><td>' + r.jenisPM + '</td>' +
-                       '<td>' + (r.estimasiMulai || '-') + '</td><td>' + (r.estimasiSelesai || '-') + '</td><td>' + (r.estimasiPreheating || '-') + '</td>' +
-                       '<td>' + r.mesin + '</td><td>' + (r.pic || '-') + '</td><td>' + (r.jamSelesai || '-') + '</td><td>' + (r.keterangan || '-') + '</td>';
-        tbody.appendChild(tr);
+      var rows = [];
+      for (var i = 0; i < data.length; i++) {
+        var r = data[i];
+        var groupKey = (r.tanggal || '') + '_' + (r.line || '') + '_' + (r.jenisPM || '');
+
+        if (i > 0 && rows[rows.length - 1].groupKey === groupKey) {
+          rows[rows.length - 1].span += 1;
+          rows[rows.length - 1].items.push(r);
+        } else {
+          rows.push({
+            groupKey: groupKey,
+            span: 1,
+            items: [r]
+          });
+        }
+      }
+
+      rows.forEach(function(group) {
+        group.items.forEach(function(r, index) {
+          var tr = document.createElement('tr');
+          var html = '';
+
+          if (index === 0) {
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.hari || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.tanggal || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.line || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.jenisPM || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.estimasiMulai || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.estimasiSelesai || '-') + '</td>';
+            html += '<td style="text-align: center; vertical-align: middle;" rowspan="' + group.span + '">' + (r.estimasiPreheating || '-') + '</td>';
+          }
+
+          // Isi urutan data: Mesin -> PIC -> Jam Selesai -> Keterangan -> Tombol Edit (Aksi)
+          html += '<td style="vertical-align: middle;">' + (r.mesin || '-') + '</td>' +
+                  '<td style="vertical-align: middle;">' + (r.pic || '-') + '</td>' +
+                  '<td style="text-align: center; vertical-align: middle;">' + (r.jamSelesai || '-') + '</td>' +
+                  '<td style="vertical-align: middle;">' + (r.keterangan || '-') + '</td>' +
+                  '<td style="text-align: center; vertical-align: middle;" class="no-print">' +
+                  '<button class="btn-edit" onclick="openModalEditPM(' + r.rowIndex + ')">✏️ Edit</button>' +
+                  '</td>';
+
+          tr.innerHTML = html;
+          tbody.appendChild(tr);
+        });
       });
     };
 
@@ -846,11 +886,11 @@ export default function Home() {
               <table>
                 <thead>
                   <tr style="background-color: #d9ead3;">
-                    <th style="width: 60px;" class="no-print">Aksi</th>
                     <th style="width: 70px;">Hari</th><th style="width: 90px;">Tanggal</th><th style="width: 50px;">Line</th>
                     <th style="width: 250px;">Jenis PM</th><th style="width: 85px;">Jam Mulai</th><th style="width: 85px;">Est. Selesai</th>
                     <th style="width: 95px;">Est. Preheating</th><th style="width: 140px;">Mesin</th><th style="width: 120px;">PIC</th>
                     <th style="width: 85px;">Jam Selesai</th><th>Keterangan</th>
+                    <th style="width: 70px;" class="no-print">Aksi</th>
                   </tr>
                 </thead>
                 <tbody id="bodyRiwayatPM"><tr><td colspan="12" style="text-align: center;">Memuat data PM...</td></tr></tbody>
