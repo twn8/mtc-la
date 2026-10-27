@@ -101,110 +101,132 @@ export async function GET(request) {
       return NextResponse.json({ success: true, data });
     }
 
-    // 2. Get Histori PM & Filtered PM
-    if (action === 'getHistoriPMData' || action === 'getFilteredHistoriPMData') {
-      const filterTanggal = searchParams.get('tanggal') || '';
-      const filterLine = searchParams.get('line') || '';
-      const filterJenis = searchParams.get('jenisPM') || '';
+// 2. Get Histori PM & Filtered PM
+  if (action === 'getHistoriPMData' || action === 'getFilteredHistoriPMData') {
+    const filterTanggal = searchParams.get('tanggal') || '';
+    const filterLine = searchParams.get('line') || '';
+    const filterJenis = searchParams.get('jenisPM') || '';
 
-      const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Histori_PM!A:K' });
-      const rows = response.data.values || [];
-      if (rows.length <= 1) return NextResponse.json({ success: true, data: [] });
+    const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: 'Histori_PM!A:K' });
+    const rows = response.data.values || [];
+    if (rows.length <= 1) return NextResponse.json({ success: true, data: [] });
 
-      const groupedData = {};
-      rows.slice(1).forEach((row, idx) => {
-        const hari = row[0] ? String(row[0]) : '';
-        const rawTgl = row[1] || '';
-        const line = row[2] ? String(row[2]) : '';
-        const jenisPM = row[3] ? String(row[3]) : '';
-        const groupKey = `${rawTgl}_${line}_${jenisPM}`;
+    const groupedData = {};
+    rows.slice(1).forEach((row, idx) => {
+      const hari = row[0] ? String(row[0]) : '';
+      const rawTgl = row[1] || '';
+      const line = row[2] ? String(row[2]) : '';
+      const jenisPM = row[3] ? String(row[3]) : '';
+      const groupKey = `${rawTgl}_${line}_${jenisPM}`;
 
-        if (!groupedData[groupKey]) {
-          groupedData[groupKey] = {
-            hari,
-            tanggal: formatDate_(rawTgl),
-            rawTanggal: String(rawTgl),
-            line,
-            jenisPM,
-            estimasiMulai: formatTime_(row[4]) || '08:30',
-            estimasiSelesai: formatTime_(row[5]),
-            estimasiPreheating: formatTime_(row[6]),
-            rows: []
-          };
-        }
+      if (!groupedData[groupKey]) {
+        groupedData[groupKey] = {
+          hari,
+          tanggal: formatDate_(rawTgl),
+          rawTanggal: String(rawTgl),
+          line,
+          jenisPM,
+          estimasiMulai: formatTime_(row[4]) || '08:30',
+          estimasiSelesai: formatTime_(row[5]),
+          estimasiPreheating: formatTime_(row[6]),
+          rows: []
+        };
+      }
 
-        groupedData[groupKey].rows.push({
-          rowIndex: idx + 2,
-          mesin: row[7] ? String(row[7]) : '',
-          pic: row[8] ? String(row[8]) : '',
-          rawJamSelesai: row[9],
-          jamSelesai: formatTime_(row[9]),
-          keterangan: row[10] ? String(row[10]) : ''
-        });
+      groupedData[groupKey].rows.push({
+        rowIndex: idx + 2,
+        mesin: row[7] ? String(row[7]) : '',
+        pic: row[8] ? String(row[8]) : '',
+        rawJamSelesai: row[9],
+        jamSelesai: formatTime_(row[9]),
+        keterangan: row[10] ? String(row[10]) : ''
+      });
+    });
+
+    let result = [];
+    for (const key in groupedData) {
+      const group = groupedData[key];
+      let semuaSelesai = true;
+      let jamSelesaiList = [];
+
+      group.rows.forEach(r => {
+        if (!r.rawJamSelesai || String(r.rawJamSelesai).trim() === '') semuaSelesai = false;
+        else jamSelesaiList.push(r.jamSelesai);
       });
 
-      let result = [];
-      for (const key in groupedData) {
-        const group = groupedData[key];
-        let semuaSelesai = true;
-        let jamSelesaiList = [];
+      let jamProses = '';
+      let durasiText = '****';
+      if (!semuaSelesai) {
+        jamProses = `${group.estimasiMulai}****`;
+      } else {
+        jamSelesaiList.sort();
+        const jamTerakhir = jamSelesaiList[jamSelesaiList.length - 1];
+        jamProses = `${group.estimasiMulai}\n${jamTerakhir}`;
+        const durasiMenit = hitungSelisihMenit_(group.estimasiMulai, jamTerakhir);
+        if (durasiMenit >= 0) {
+          const jam = Math.floor(durasiMenit / 60);
+          const menit = durasiMenit % 60;
+          durasiText = ((jam > 0 ? jam + ' jam ' : '') + (menit > 0 ? menit + ' menit' : '')).trim();
+          if (durasiMenit === 0) durasiText = '0 menit';
+        }
+      }
 
-        group.rows.forEach(r => {
-          if (!r.rawJamSelesai || String(r.rawJamSelesai).trim() === '') semuaSelesai = false;
-          else jamSelesaiList.push(r.jamSelesai);
+      group.rows.forEach(r => {
+        result.push({
+          rowIndex: r.rowIndex,
+          hari: group.hari,
+          tanggal: group.tanggal,
+          rawTanggal: group.rawTanggal,
+          line: group.line,
+          jenisPM: group.jenisPM,
+          estimasiMulai: group.estimasiMulai,
+          estimasiSelesai: group.estimasiSelesai,
+          estimasiPreheating: group.estimasiPreheating,
+          mesin: r.mesin,
+          pic: r.pic,
+          jamSelesai: r.jamSelesai,
+          keterangan: r.keterangan,
+          jamProses,
+          durasiText
         });
+      });
+    }
 
-        let jamProses = '';
-        let durasiText = '****';
-        if (!semuaSelesai) {
-          jamProses = `${group.estimasiMulai} - ****`;
-        } else {
-          jamSelesaiList.sort();
-          const jamTerakhir = jamSelesaiList[jamSelesaiList.length - 1];
-          jamProses = `${group.estimasiMulai} - ${jamTerakhir}`;
-          const durasiMenit = hitungSelisihMenit_(group.estimasiMulai, jamTerakhir);
-          if (durasiMenit >= 0) {
-            const jam = Math.floor(durasiMenit / 60);
-            const menit = durasiMenit % 60;
-            durasiText = ((jam > 0 ? jam + ' jam ' : '') + (menit > 0 ? menit + ' menit' : '')).trim();
-            if (durasiMenit === 0) durasiText = '0 menit';
+    // ===== PERBAIKAN FILTER TANGGAL DI SINI =====
+    if (filterTanggal) {
+      result = result.filter(r => {
+        let tglSheet = String(r.rawTanggal || '').trim();
+        
+        // Jika format di spreadsheet YYYY-MM-DD
+        if (tglSheet.includes('-')) {
+          tglSheet = tglSheet.slice(0, 10);
+        } 
+        // Jika format di spreadsheet DD/MM/YYYY, ubah dulu ke YYYY-MM-DD agar cocok dengan input date
+        else if (tglSheet.includes('/')) {
+          const parts = tglSheet.split('/');
+          if (parts.length === 3) {
+            tglSheet = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
           }
         }
-
-        group.rows.forEach(r => {
-          result.push({
-            rowIndex: r.rowIndex,
-            hari: group.hari,
-            tanggal: group.tanggal,
-            rawTanggal: group.rawTanggal,
-            line: group.line,
-            jenisPM: group.jenisPM,
-            estimasiMulai: group.estimasiMulai,
-            estimasiSelesai: group.estimasiSelesai,
-            estimasiPreheating: group.estimasiPreheating,
-            mesin: r.mesin,
-            pic: r.pic,
-            jamSelesai: r.jamSelesai,
-            keterangan: r.keterangan,
-            jamProses,
-            durasiText
-          });
-        });
-      }
-
-      // Terapkan Filter
-      if (filterTanggal) result = result.filter(r => r.rawTanggal === filterTanggal);
-      if (filterLine) result = result.filter(r => r.line === filterLine);
-      if (filterJenis) {
-        result = result.filter(r => {
-          const jenis = String(r.jenisPM).trim();
-          if (filterJenis === 'Additional') return jenis.startsWith('Additional');
-          return jenis === filterJenis;
-        });
-      }
-
-      return NextResponse.json({ success: true, data: result });
+        
+        return tglSheet === filterTanggal;
+      });
     }
+
+    if (filterLine) {
+      result = result.filter(r => String(r.line).trim() === String(filterLine).trim());
+    }
+    
+    if (filterJenis) {
+      result = result.filter(r => {
+        const jenis = String(r.jenisPM).trim();
+        if (filterJenis === 'Additional') return jenis.startsWith('Additional');
+        return jenis === filterJenis;
+      });
+    }
+
+    return NextResponse.json({ success: true, data: result });
+  }
 
     return NextResponse.json({ success: false, message: 'Action tidak ditemukan' });
   } catch (error) {
